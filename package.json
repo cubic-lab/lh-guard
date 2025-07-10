@@ -1,6 +1,6 @@
 {
   "name": "@cubic-lab/lh-guard",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "scripts": {
     "build": "bun build --compile --minify --sourcemap ./main.ts --outfile ./dist/bin/lh-guard"
   },
