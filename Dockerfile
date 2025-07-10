@@ -6,7 +6,3 @@ ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 WORKDIR /app
 
 COPY . /app
-
-RUN echo "Chromium executable path: $(where chromium)"
-
-ENTRYPOINT [ "bun", "main.ts" ]
