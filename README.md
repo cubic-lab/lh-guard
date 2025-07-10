@@ -20,7 +20,8 @@ docker run --rm -v "$(pwd)":/app \
     -e ENV=stage \
     -e SUPABASE_URL=<your url> \
     -e SUPABASE_KEY=<your_key> \
-    matcloud/lh-guard
+    ghcr.io/cubic-lab/lh-guard:1.0.2 \
+    bun main.ts
 ```
 
 This project was created using `bun init` in bun v1.2.13. [Bun](https://bun.sh) is a fast all-in-one JavaScript runtime.
