@@ -21,12 +21,12 @@ interface Scores {
   seo: number;
 }
 
-interface LHConfig {
-  operators: Record<string, {url: string}>
-}
+type Env = string;
+type Operator = string;
+type LHConfig = Record<Env, Record<Operator, {url: string}>>;
 
-async function loadConfig(env: string): Promise<LHConfig> {
-  const fp = path.join(process.cwd(), LH_BASE_DIR, `lh-conf.${env}.json`);
+async function loadConfig(): Promise<LHConfig> {
+  const fp = path.join(process.cwd(), LH_BASE_DIR, `lh-conf.json`);
   const buffer = await fs.readFile(fp, 'utf-8');
 
   return JSON.parse(buffer);
@@ -149,8 +149,8 @@ async function main() {
   if (!operator) {
     throw new Error('--operator is required');
   }
-  const config = await loadConfig(env);
-  const url = config.operators[operator]?.url;
+  const config = await loadConfig();
+  const url = config[env]?.[operator]?.url;
 
   if (!url) {
     throw new Error(`failed to get url from config via operator: ${operator} and env: ${env}`);
