@@ -1,4 +1,4 @@
-export function formatScore(score: number | null | undefined) {
+export function formatScore(score: number | undefined | null) {
   return parseFloat(((score || 0) * 100).toFixed(2));
 }
 

@@ -1,7 +1,5 @@
 {
   "name": "lh-guard",
-  "module": "main.ts",
-  "type": "module",
   "private": true,
   "devDependencies": {
     "@types/bun": "latest"
@@ -10,8 +8,8 @@
     "typescript": "^5"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.50.3",
+    "@supabase/supabase-js": "^2.50.4",
     "lighthouse": "^12.7.1",
-    "puppeteer": "^24.11.2"
+    "puppeteer": "^24.12.1"
   }
 }

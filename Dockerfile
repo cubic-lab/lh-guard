@@ -1,15 +1,12 @@
-# use the official Bun image
-# see all versions at https://hub.docker.com/r/oven/bun/tags
-FROM oven/bun:1.2.13
+FROM ghcr.io/cubic-lab/bun-chromium:v1.0.0-bun-1.2.13
+
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium  
 
 WORKDIR /app
 
 COPY . /app
 
-# install dependencies
-RUN bun install
+RUN echo "Chromium executable path: $(where chromium)"
 
-# run the app
-USER bun
-EXPOSE 3000/tcp
-ENTRYPOINT [ "bun", "run", "main.ts" ]
+ENTRYPOINT [ "bun", "main.ts" ]

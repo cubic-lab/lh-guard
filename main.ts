@@ -2,8 +2,9 @@ import puppeteer, { Page } from "puppeteer";
 import { parseArgs } from "util";
 import lighthouse from "lighthouse";
 import path from "path";
-import { formatScore, utcnow } from "@/libs/utils";
+import { formatScore, utcnow } from "./libs/utils.js"; 
 import { createClient } from "@supabase/supabase-js";
+import fs from "fs/promises";
 
 const LH_BASE_DIR = 'lh'
 const LH_CONF_FILE_NAME = 'lh.conf.json';
@@ -11,7 +12,7 @@ const LH_REPORT_FILE_NAME = 'lh-report.html';
 const LH_SCORES_FILE_NAME = 'lh-scores.json';
 const SUPABASE_BUCKET = 'guards';
 
-const supabase = createClient(Bun.env.SUPABASE_URL || '', Bun.env.SUPABASE_KEY || '');
+const supabase = createClient(process.env.SUPABASE_URL || '', process.env.SUPABASE_KEY || '');
 
 interface Scores {
   generatedAt: string;
@@ -27,14 +28,12 @@ interface LHConfig {
 
 async function loadConfig(): Promise<LHConfig> {
   const fp = path.join(process.cwd(), LH_BASE_DIR, LH_CONF_FILE_NAME);
-  return Bun.file(fp).json();
+  const buffer = await fs.readFile(fp, 'utf-8');
+
+  return JSON.parse(buffer);
 }
 
-async function runlh(page: Page, {
-  url,
-}: {
-  url: string;
-}): Promise<Scores> {
+async function runlh(page: Page, url: string) {
   console.log(`start to run lighthouse for: ${url}`);
 
   const result = await lighthouse(url, {
@@ -63,10 +62,10 @@ async function runlh(page: Page, {
 
   console.log('start to generate report files...');
 
-  const reportFile = Bun.file(path.join(process.cwd(), LH_BASE_DIR, LH_REPORT_FILE_NAME));
-  await reportFile.write(report as string);
-  const scoresFile = Bun.file(path.join(process.cwd(), LH_BASE_DIR, LH_SCORES_FILE_NAME));
-  await scoresFile.write(JSON.stringify(scores));
+  const reportFile = path.join(process.cwd(), LH_BASE_DIR, LH_REPORT_FILE_NAME);
+  await fs.writeFile(reportFile, report);
+  const scoresFile = path.join(process.cwd(), LH_BASE_DIR, LH_SCORES_FILE_NAME);
+  await fs.writeFile(scoresFile, JSON.stringify(scores));
 
   console.log(`finish to run lighthouse for: ${url}`);
 
@@ -107,8 +106,9 @@ async function fetchPrevScores(env: string, operator: string): Promise<Scores|nu
     return null;
   }
   console.log('finish to fetch prev scores from supabase', objectName);
+  const content = await data.text();
 
-  return data.json();
+  return JSON.parse(content);
 }
 
 async function storeScores(env: string, operator: string, scores: Scores) {
@@ -127,7 +127,7 @@ async function storeScores(env: string, operator: string, scores: Scores) {
 
 async function main() {
   const { values } = parseArgs({
-    args: Bun.argv,
+    args: process.argv,
     strict: true,
     allowPositionals: true,
     options: {
@@ -140,7 +140,9 @@ async function main() {
     }
   });
 
-  const { env, operator } = values;
+  const { env: envFromArg, operator: operatorFromArg } = values;
+  const env = envFromArg || process.env.ENV;
+  const operator = operatorFromArg || process.env.OPERATOR;
 
   if (!env) {
     throw new Error('--env is required');
@@ -162,12 +164,13 @@ async function main() {
     // Set to false if you want to see the script in action.
     headless: true,
     defaultViewport: null,
-    ignoreDefaultArgs: ['--enable-automation']
+    ignoreDefaultArgs: ['--enable-automation'],
+    args: ["disable-gpu","--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
   });
-  let scores: Scores | null = null;
+  let scores = null;
   try {
     const page = await browser.newPage();
-    scores = await runlh(page, { url });
+    scores = await runlh(page, url);
     console.log(`the result of current scores is: ${JSON.stringify(scores)}`);
     const prevScores = await fetchPrevScores(env, operator);
     if (!prevScores) {
