@@ -7,7 +7,6 @@ import { createClient } from "@supabase/supabase-js";
 import fs from "fs/promises";
 
 const LH_BASE_DIR = 'lh'
-const LH_CONF_FILE_NAME = 'lh.conf.json';
 const LH_REPORT_FILE_NAME = 'lh-report.html';
 const LH_SCORES_FILE_NAME = 'lh-scores.json';
 const SUPABASE_BUCKET = 'guards';
@@ -26,8 +25,8 @@ interface LHConfig {
   operators: Record<string, {url: string}>
 }
 
-async function loadConfig(): Promise<LHConfig> {
-  const fp = path.join(process.cwd(), LH_BASE_DIR, LH_CONF_FILE_NAME);
+async function loadConfig(env: string): Promise<LHConfig> {
+  const fp = path.join(process.cwd(), LH_BASE_DIR, `lh-conf.${env}.json`);
   const buffer = await fs.readFile(fp, 'utf-8');
 
   return JSON.parse(buffer);
@@ -150,11 +149,11 @@ async function main() {
   if (!operator) {
     throw new Error('--operator is required');
   }
-  const config = await loadConfig();
+  const config = await loadConfig(env);
   const url = config.operators[operator]?.url;
 
   if (!url) {
-    throw new Error(`failed to get url from ${LH_CONF_FILE_NAME} via operator: ${operator}`);
+    throw new Error(`failed to get url from config via operator: ${operator} and env: ${env}`);
   }
 
   // Use Puppeteer to launch headless Chrome
