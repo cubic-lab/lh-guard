@@ -1,16 +1,13 @@
 {
   "name": "@cubic-lab/lh-guard",
-  "version": "1.0.4",
-  "module": "main.ts",
+  "version": "1.0.5",
   "type": "module",
-  "scripts": {
-    "build": "bun build --compile --minify --sourcemap ./main.ts --outfile ./dist/bin/lh-guard"
-  },
   "bin": {
-    "lh-guard": "dist/bin/lh-guard"
+    "lh-guard": "cli.mjs"
   },
   "files": [
-    "dist",
+    "libs",
+    "cli.mjs",
     "package.json",
     "README.md"
   ],
@@ -22,6 +19,7 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.50.4",
+    "dotenv": "^17.2.0",
     "lighthouse": "^12.7.1",
     "puppeteer": "^24.12.1"
   }

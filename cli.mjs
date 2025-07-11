@@ -2,9 +2,10 @@ import puppeteer, { Page } from "puppeteer";
 import { parseArgs } from "util";
 import lighthouse from "lighthouse";
 import path from "path";
-import { formatScore, utcnow } from "./libs/utils.js"; 
+import { formatScore, utcnow } from "./libs/utils.mjs"; 
 import { createClient } from "@supabase/supabase-js";
 import fs from "fs/promises";
+import "dotenv/config";
 
 const LH_BASE_DIR = 'lh'
 const LH_REPORT_FILE_NAME = 'lh-report.html';
@@ -13,26 +14,26 @@ const SUPABASE_BUCKET = 'guards';
 
 const supabase = createClient(process.env.SUPABASE_URL || '', process.env.SUPABASE_KEY || '');
 
-interface Scores {
-  generatedAt: string;
-  performance: number;
-  accessibility: number;
-  bestPractices: number;
-  seo: number;
-}
+// interface Scores {
+//   generatedAt: string;
+//   performance: number;
+//   accessibility: number;
+//   bestPractices: number;
+//   seo: number;
+// }
 
-type Env = string;
-type Operator = string;
-type LHConfig = Record<Env, Record<Operator, {url: string}>>;
+// type Env = string;
+// type Operator = string;
+// type LHConfig = Record<Env, Record<Operator, {url: string}>>;
 
-async function loadConfig(): Promise<LHConfig> {
+async function loadConfig() {
   const fp = path.join(process.cwd(), LH_BASE_DIR, `lh-conf.json`);
   const buffer = await fs.readFile(fp, 'utf-8');
 
   return JSON.parse(buffer);
 }
 
-async function runlh(page: Page, url: string) {
+async function runlh(page, url) {
   console.log(`start to run lighthouse for: ${url}`);
 
   const result = await lighthouse(url, {
@@ -71,7 +72,7 @@ async function runlh(page: Page, url: string) {
   return scores;
 }
 
-async function checkScores(current: Scores, previous: Scores) {
+async function checkScores(current, previous) {
   console.log('checking scores...');
   const { performance, accessibility, bestPractices, seo } = current;
 
@@ -95,7 +96,7 @@ async function checkScores(current: Scores, previous: Scores) {
   return true;
 }
 
-async function fetchPrevScores(env: string, operator: string): Promise<Scores|null> {
+async function fetchPrevScores(env, operator) {
   const objectName = `${operator}-${env}.scores.json`;
   console.log('start to fetch prev scores from supabase', objectName);
   const { data, error } = await supabase.storage.from(SUPABASE_BUCKET).download(objectName);
@@ -110,7 +111,7 @@ async function fetchPrevScores(env: string, operator: string): Promise<Scores|nu
   return JSON.parse(content);
 }
 
-async function storeScores(env: string, operator: string, scores: Scores) {
+async function storeScores(env, operator, scores) {
   const objectName = `${operator}-${env}.scores.json`;
   console.log('start to upload object to supabase', objectName);
   const { error } = await supabase.storage.from(SUPABASE_BUCKET).upload(objectName, JSON.stringify(scores), {
