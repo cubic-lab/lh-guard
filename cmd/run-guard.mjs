@@ -1,8 +1,7 @@
-import puppeteer, { Page } from "puppeteer";
-import { parseArgs } from "util";
+import puppeteer from "puppeteer";
 import lighthouse from "lighthouse";
 import path from "path";
-import { formatScore, utcnow } from "./libs/utils.mjs"; 
+import { formatScore, utcnow } from "../libs/utils.mjs"; 
 import { createClient } from "@supabase/supabase-js";
 import fs from "fs/promises";
 import "dotenv/config";
@@ -14,17 +13,50 @@ const SUPABASE_BUCKET = 'guards';
 
 const supabase = createClient(process.env.SUPABASE_URL || '', process.env.SUPABASE_KEY || '');
 
-// interface Scores {
-//   generatedAt: string;
-//   performance: number;
-//   accessibility: number;
-//   bestPractices: number;
-//   seo: number;
-// }
+/**
+ * @param {string} env 
+ * @param {string} operator 
+ * @returns 
+ */
+export async function runGuard(env, operator) {
+  const config = await loadConfig();
+  const url = config[env]?.[operator]?.url;
 
-// type Env = string;
-// type Operator = string;
-// type LHConfig = Record<Env, Record<Operator, {url: string}>>;
+  if (!url) {
+    throw new Error(`failed to get url from config via operator: ${operator} and env: ${env}`);
+  }
+
+  // Use Puppeteer to launch headless Chrome
+  // - Omit `--enable-automation` (See https://github.com/GoogleChrome/lighthouse/issues/12988)
+  // - Don't use 800x600 default viewport
+  const browser = await puppeteer.launch({
+    // Set to false if you want to see the script in action.
+    headless: true,
+    defaultViewport: null,
+    ignoreDefaultArgs: ['--enable-automation'],
+    args: ["disable-gpu","--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
+  });
+  let scores = null;
+  try {
+    const page = await browser.newPage();
+    scores = await runlh(page, url);
+    console.log(`the result of current scores is: ${JSON.stringify(scores)}`);
+    const prevScores = await fetchPrevScores(env, operator);
+    if (!prevScores) {
+      console.warn('No prev scores file found');
+      return;
+    }
+    console.log(`the result of previous scores is: ${JSON.stringify(prevScores)}`);
+    if (!checkScores(scores, prevScores)) {
+      throw new Error('lighthouse audit get failed');
+    }
+  } finally {
+    if (scores) {
+      await storeScores(env, operator, scores);
+    }
+    browser.close();
+  }
+}
 
 async function loadConfig() {
   const fp = path.join(process.cwd(), LH_BASE_DIR, `lh-conf.json`);
@@ -124,69 +156,3 @@ async function storeScores(env, operator, scores) {
   }
   console.log('finish to upload object to supabase', objectName);
 }
-
-async function main() {
-  const { values } = parseArgs({
-    args: process.argv,
-    strict: true,
-    allowPositionals: true,
-    options: {
-      env: {
-        type: 'string',
-      },
-      operator: {
-        type: 'string'
-      },
-    }
-  });
-
-  const { env: envFromArg, operator: operatorFromArg } = values;
-  const env = envFromArg || process.env.ENV;
-  const operator = operatorFromArg || process.env.OPERATOR;
-
-  if (!env) {
-    throw new Error('--env is required');
-  }
-  if (!operator) {
-    throw new Error('--operator is required');
-  }
-  const config = await loadConfig();
-  const url = config[env]?.[operator]?.url;
-
-  if (!url) {
-    throw new Error(`failed to get url from config via operator: ${operator} and env: ${env}`);
-  }
-
-  // Use Puppeteer to launch headless Chrome
-  // - Omit `--enable-automation` (See https://github.com/GoogleChrome/lighthouse/issues/12988)
-  // - Don't use 800x600 default viewport
-  const browser = await puppeteer.launch({
-    // Set to false if you want to see the script in action.
-    headless: true,
-    defaultViewport: null,
-    ignoreDefaultArgs: ['--enable-automation'],
-    args: ["disable-gpu","--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
-  });
-  let scores = null;
-  try {
-    const page = await browser.newPage();
-    scores = await runlh(page, url);
-    console.log(`the result of current scores is: ${JSON.stringify(scores)}`);
-    const prevScores = await fetchPrevScores(env, operator);
-    if (!prevScores) {
-      console.warn('No prev scores file found');
-      return;
-    }
-    console.log(`the result of previous scores is: ${JSON.stringify(prevScores)}`);
-    if (!checkScores(scores, prevScores)) {
-      throw new Error('lighthouse audit get failed');
-    }
-  } finally {
-    if (scores) {
-      await storeScores(env, operator, scores);
-    }
-    browser.close();
-  }
-}
-
-main()

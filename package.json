@@ -1,16 +1,10 @@
 {
   "name": "@cubic-lab/lh-guard",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "type": "module",
   "bin": {
-    "lh-guard": "cli.mjs"
+    "lh-guard": "bin/cli.mjs"
   },
-  "files": [
-    "libs",
-    "cli.mjs",
-    "package.json",
-    "README.md"
-  ],
   "devDependencies": {
     "@types/bun": "latest"
   },
