@@ -1,14 +1,14 @@
-import puppeteer from "puppeteer";
+import puppeteer, { Page } from "puppeteer";
 import lighthouse from "lighthouse";
 import path from "path";
-import { formatScore, utcnow } from "../libs/utils.mjs"; 
+import { formatScore, urlOfRotationDomain, utcnow, formatValue } from "../libs/utils.mjs"; 
 import { createClient } from "@supabase/supabase-js";
 import fs from "fs/promises";
 import "dotenv/config";
 
 const LH_BASE_DIR = 'lh'
 const LH_REPORT_FILE_NAME = 'lh-report.html';
-const LH_SCORES_FILE_NAME = 'lh-scores.json';
+const LH_METRICS_FILE_NAME = 'lh-metrics.json';
 const SUPABASE_BUCKET = 'guards';
 
 const supabase = createClient(process.env.SUPABASE_URL || '', process.env.SUPABASE_KEY || '');
@@ -21,6 +21,7 @@ const supabase = createClient(process.env.SUPABASE_URL || '', process.env.SUPABA
 export async function runGuard(env, operator) {
   const config = await loadConfig();
   const url = config[env]?.[operator]?.url;
+  const domainRotation = config[env]?.[operator]?.domainRotation;
 
   if (!url) {
     throw new Error(`failed to get url from config via operator: ${operator} and env: ${env}`);
@@ -36,28 +37,38 @@ export async function runGuard(env, operator) {
     ignoreDefaultArgs: ['--enable-automation'],
     args: ["disable-gpu","--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
   });
-  let scores = null;
+  let metrics = null;
   try {
     const page = await browser.newPage();
-    scores = await runlh(page, url);
-    console.log(`the result of current scores is: ${JSON.stringify(scores)}`);
-    const prevScores = await fetchPrevScores(env, operator);
-    if (!prevScores) {
-      console.warn('No prev scores file found');
+    let runUrl = url;
+
+    if (domainRotation) {
+      await page.goto(url);
+      runUrl = urlOfRotationDomain(page);
+    }
+
+    metrics = await runlh(page, runUrl);
+    console.log(`the result of current metrics is: ${JSON.stringify(metrics)}`);
+    const prevMetrics = await getPrevMetrics(env, operator);
+    if (!prevMetrics) {
+      console.warn('No prev metrics file found');
       return;
     }
-    console.log(`the result of previous scores is: ${JSON.stringify(prevScores)}`);
-    if (!checkScores(scores, prevScores)) {
+    console.log(`the result of previous metrics is: ${JSON.stringify(prevMetrics)}`);
+    if (!checkPerf(metrics, prevMetrics)) {
       throw new Error('lighthouse audit get failed');
     }
   } finally {
-    if (scores) {
-      await storeScores(env, operator, scores);
+    if (metrics) {
+      await storeMetrics(env, operator, metrics);
     }
-    browser.close();
+    await browser.close();
   }
 }
 
+/**
+ * @returns {Promise<LHConfig>}
+ */
 async function loadConfig() {
   const fp = path.join(process.cwd(), LH_BASE_DIR, `lh-conf.json`);
   const buffer = await fs.readFile(fp, 'utf-8');
@@ -65,6 +76,11 @@ async function loadConfig() {
   return JSON.parse(buffer);
 }
 
+/**
+ * @param {Page} page 
+ * @param {string} url 
+ * @returns {Promise<Metrics>}
+ */
 async function runlh(page, url) {
   console.log(`start to run lighthouse for: ${url}`);
 
@@ -79,62 +95,88 @@ async function runlh(page, url) {
   if (!result) {
     throw new Error('failed to get lighthouse result');
   }
-  const { lhr: { categories }, report } = result;
+  const { lhr: { categories, audits }, report } = result;
   const performance = formatScore(categories.performance?.score);
   const accessibility = formatScore(categories.accessibility?.score);
   const bestPractices = formatScore(categories['best-practices']?.score);
   const seo = formatScore(categories.seo?.score);
-  const scores = {
+  const fcp = formatValue(audits['first-contentful-paint']?.numericValue);
+  const lcp = formatValue(audits['largest-contentful-paint']?.numericValue);
+  const tbt = formatValue(audits['total-blocking-time']?.numericValue);
+  const cls = formatValue(audits['cumulative-layout-shift']?.numericValue);
+  const si = formatValue(audits['speed-index']?.numericValue);
+
+  const metrics = {
     performance, 
     accessibility, 
     bestPractices, 
     seo,
+    fcp,
+    lcp,
+    tbt,
+    cls,
+    si,
     generatedAt: utcnow(),
-  }
+  };
 
   console.log('start to generate report files...');
 
   const reportFile = path.join(process.cwd(), LH_BASE_DIR, LH_REPORT_FILE_NAME);
   await fs.writeFile(reportFile, report);
-  const scoresFile = path.join(process.cwd(), LH_BASE_DIR, LH_SCORES_FILE_NAME);
-  await fs.writeFile(scoresFile, JSON.stringify(scores));
+  const metricsFile = path.join(process.cwd(), LH_BASE_DIR, LH_METRICS_FILE_NAME);
+  await fs.writeFile(metricsFile, JSON.stringify(metrics));
 
   console.log(`finish to run lighthouse for: ${url}`);
 
-  return scores;
+  return metrics;
 }
 
-async function checkScores(current, previous) {
-  console.log('checking scores...');
-  const { performance, accessibility, bestPractices, seo } = current;
+/**
+ * @param {Metrics} current 
+ * @param {Metrics} previous 
+ * @returns {boolean}
+ */
+async function checkPerf(current, previous) {
+  console.log('checking performance metrics...');
+  const { fcp, lcp, tbt, cls, si } = current;
+  const { fcp: prevFcp, lcp: prevLcp, tbt: prevTbt, cls: prevCls, si: prevSi } = previous;
 
-  if (performance < previous.performance) {
-    console.warn(`failed on performance: current=${performance}, prev=${previous.performance}`);
+  if (fcp > prevFcp) {
+    console.warn(`failed on fcp: current=${fcp}, prev=${prevFcp}`);
     return false;
   }
-  if (accessibility < previous.accessibility) {
-    console.warn(`failed on accessibility: current=${accessibility}, prev=${previous.accessibility}`);
+  if (lcp > prevLcp) {
+    console.warn(`failed on lcp: current=${lcp}, prev=${prevLcp}`);
     return false;
   }
-  if (bestPractices < previous.bestPractices) {
-    console.warn(`failed on bestPractices: current=${bestPractices}, prev=${previous.bestPractices}`);
+  if (tbt > prevTbt) {
+    console.warn(`failed on tbt: current=${tbt}, prev=${prevTbt}`);
     return false;
   }
-  if (seo < previous.seo) {
-    console.warn(`failed on seo: current=${seo}, prev=${previous.seo}`);
+  if (cls > prevCls) {
+    console.warn(`failed on cls: current=${cls}, prev=${prevCls}`);
     return false;
   }
-  console.log('scores checked and passed');
+  if (si > prevSi) {
+    console.warn(`failed on si: current=${si}, prev=${prevSi}`);
+    return false;
+  }
+  console.log('metrics checked and passed');
   return true;
 }
 
-async function fetchPrevScores(env, operator) {
-  const objectName = `${operator}-${env}.scores.json`;
-  console.log('start to fetch prev scores from supabase', objectName);
+/**
+ * @param {string} env 
+ * @param {string} operator 
+ * @returns 
+ */
+async function getPrevMetrics(env, operator) {
+  const objectName = getMetricsObject(env, operator);
+  console.log('start to fetch prev metrics from supabase', objectName);
   const { data, error } = await supabase.storage.from(SUPABASE_BUCKET).download(objectName);
 
   if (error) {
-    console.error('failed to fetch prev scores', error);
+    console.error('failed to fetch prev metrics', error);
     return null;
   }
   console.log('finish to fetch prev scores from supabase', objectName);
@@ -143,16 +185,32 @@ async function fetchPrevScores(env, operator) {
   return JSON.parse(content);
 }
 
-async function storeScores(env, operator, scores) {
-  const objectName = `${operator}-${env}.scores.json`;
+/**
+ * 
+ * @param {string} env
+ * @param {string} operator 
+ * @param {*} metrics 
+ * @returns 
+ */
+async function storeMetrics(env, operator, metrics) {
+  const objectName = getMetricsObject(env, operator);
   console.log('start to upload object to supabase', objectName);
-  const { error } = await supabase.storage.from(SUPABASE_BUCKET).upload(objectName, JSON.stringify(scores), {
+  const { error } = await supabase.storage.from(SUPABASE_BUCKET).upload(objectName, JSON.stringify(metrics), {
     upsert: true
   });
 
   if (error) {
-    console.error('failed to store scores', error.message);
+    console.error('failed to store metrics', error.message);
     return;
   }
   console.log('finish to upload object to supabase', objectName);
+}
+
+/**
+ * @param {string} env 
+ * @param {string} operator 
+ * @returns {string}
+ */
+function getMetricsObject(env, operator) {
+  return `${operator}-${env}.metrics.json`;
 }

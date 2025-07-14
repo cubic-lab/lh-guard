@@ -3,25 +3,11 @@
 To install dependencies:
 
 ```bash
-bun install
+npm install
 ```
 
 Example to run:
 
 ```bash
-bun main.ts --operator example --profile stage
+node bin/cli.mjs --operator example --profile stage
 ```
-
-Example to run with container:
-
-```bash
-docker run --rm -v "$(pwd)":/app \
-    -e OPERATOR=example \
-    -e ENV=stage \
-    -e SUPABASE_URL=<your url> \
-    -e SUPABASE_KEY=<your_key> \
-    ghcr.io/cubic-lab/lh-guard:1.0.2 \
-    bun main.ts
-```
-
-This project was created using `bun init` in bun v1.2.13. [Bun](https://bun.sh) is a fast all-in-one JavaScript runtime.
