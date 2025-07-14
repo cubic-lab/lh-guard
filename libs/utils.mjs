@@ -1,4 +1,5 @@
 import { Page } from "puppeteer";
+import fs from 'fs/promises';
 
 /**
  * @param {number | null | undefined} score
@@ -46,4 +47,18 @@ export function utcnow() {
   const seconds = now.getUTCSeconds().toString().padStart(2, '0');
 
   return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+}
+
+/**
+ * 
+ * @param {string} dir 
+ * @returns {Promise<boolean>}
+ */
+export async function dirExists(dir) {
+  try {
+    await fs.access(dir);
+    return true;
+  } catch (error) {
+    return false;
+  }
 }

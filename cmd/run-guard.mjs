@@ -1,15 +1,16 @@
 import puppeteer, { Page } from "puppeteer";
 import lighthouse from "lighthouse";
 import path from "path";
-import { formatScore, urlOfRotationDomain, utcnow, formatValue } from "../libs/utils.mjs"; 
+import { formatScore, urlOfRotationDomain, utcnow, formatValue, dirExists } from "../libs/utils.mjs"; 
 import { createClient } from "@supabase/supabase-js";
 import fs from "fs/promises";
 import "dotenv/config";
 
-const LH_BASE_DIR = 'lh'
+const LH_GENERATED_BASE_DIR = 'lh-guard'
 const LH_REPORT_FILE_NAME = 'lh-report.html';
 const LH_METRICS_FILE_NAME = 'lh-metrics.json';
-const SUPABASE_BUCKET = 'guards';
+
+const supbaseBucket = process.env.SUPABASE_BUCKET || 'guards';
 
 const supabase = createClient(process.env.SUPABASE_URL || '', process.env.SUPABASE_KEY || '');
 
@@ -46,18 +47,21 @@ export async function runGuard(env, operator) {
       await page.goto(url);
       runUrl = urlOfRotationDomain(page);
     }
+    await ensureGeneratedDir();
 
     metrics = await runlh(page, runUrl);
     console.log(`the result of current metrics is: ${JSON.stringify(metrics)}`);
     const prevMetrics = await getPrevMetrics(env, operator);
+
     if (!prevMetrics) {
       console.warn('No prev metrics file found');
       return;
     }
     console.log(`the result of previous metrics is: ${JSON.stringify(prevMetrics)}`);
     if (!checkPerf(metrics, prevMetrics)) {
-      throw new Error('lighthouse audit get failed');
+      throw new Error("lighthouse audit gets failed");
     }
+    console.log('lighthouse audit gets passed');
   } finally {
     if (metrics) {
       await storeMetrics(env, operator, metrics);
@@ -66,11 +70,20 @@ export async function runGuard(env, operator) {
   }
 }
 
+async function ensureGeneratedDir() {
+  const baseDir = path.join(process.cwd(), LH_GENERATED_BASE_DIR);
+  const existed = await dirExists(baseDir);
+
+  if (!existed) {
+    fs.mkdir(baseDir, { recursive: true });
+  }
+}
+
 /**
  * @returns {Promise<LHConfig>}
  */
 async function loadConfig() {
-  const fp = path.join(process.cwd(), LH_BASE_DIR, `lh-conf.json`);
+  const fp = path.join(process.cwd(), `lh-conf.json`);
   const buffer = await fs.readFile(fp, 'utf-8');
 
   return JSON.parse(buffer);
@@ -121,9 +134,9 @@ async function runlh(page, url) {
 
   console.log('start to generate report files...');
 
-  const reportFile = path.join(process.cwd(), LH_BASE_DIR, LH_REPORT_FILE_NAME);
+  const reportFile = path.join(process.cwd(), LH_GENERATED_BASE_DIR, LH_REPORT_FILE_NAME);
   await fs.writeFile(reportFile, report);
-  const metricsFile = path.join(process.cwd(), LH_BASE_DIR, LH_METRICS_FILE_NAME);
+  const metricsFile = path.join(process.cwd(), LH_GENERATED_BASE_DIR, LH_METRICS_FILE_NAME);
   await fs.writeFile(metricsFile, JSON.stringify(metrics));
 
   console.log(`finish to run lighthouse for: ${url}`);
@@ -136,7 +149,7 @@ async function runlh(page, url) {
  * @param {Metrics} previous 
  * @returns {boolean}
  */
-async function checkPerf(current, previous) {
+function checkPerf(current, previous) {
   console.log('checking performance metrics...');
   const { fcp, lcp, tbt, cls, si } = current;
   const { fcp: prevFcp, lcp: prevLcp, tbt: prevTbt, cls: prevCls, si: prevSi } = previous;
@@ -161,7 +174,6 @@ async function checkPerf(current, previous) {
     console.warn(`failed on si: current=${si}, prev=${prevSi}`);
     return false;
   }
-  console.log('metrics checked and passed');
   return true;
 }
 
@@ -173,7 +185,7 @@ async function checkPerf(current, previous) {
 async function getPrevMetrics(env, operator) {
   const objectName = getMetricsObject(env, operator);
   console.log('start to fetch prev metrics from supabase', objectName);
-  const { data, error } = await supabase.storage.from(SUPABASE_BUCKET).download(objectName);
+  const { data, error } = await supabase.storage.from(supbaseBucket).download(objectName);
 
   if (error) {
     console.error('failed to fetch prev metrics', error);
@@ -195,7 +207,7 @@ async function getPrevMetrics(env, operator) {
 async function storeMetrics(env, operator, metrics) {
   const objectName = getMetricsObject(env, operator);
   console.log('start to upload object to supabase', objectName);
-  const { error } = await supabase.storage.from(SUPABASE_BUCKET).upload(objectName, JSON.stringify(metrics), {
+  const { error } = await supabase.storage.from(supbaseBucket).upload(objectName, JSON.stringify(metrics), {
     upsert: true
   });
 
