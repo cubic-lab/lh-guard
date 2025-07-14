@@ -83,7 +83,7 @@ async function ensureGeneratedDir() {
  * @returns {Promise<LHConfig>}
  */
 async function loadConfig() {
-  const fp = path.join(process.cwd(), `lh-conf.json`);
+  const fp = path.join(process.cwd(), `lh-guard.conf.json`);
   const buffer = await fs.readFile(fp, 'utf-8');
 
   return JSON.parse(buffer);
