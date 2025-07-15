@@ -1,6 +1,6 @@
 {
   "name": "@cubic-lab/lh-guard",
-  "version": "1.0.9",
+  "version": "1.0.10",
   "type": "module",
   "bin": {
     "lh-guard": "bin/cli.mjs"

@@ -55,6 +55,7 @@ export async function runGuard(env, operator) {
 
     if (!prevMetrics) {
       console.warn('No prev metrics file found');
+      await storeMetrics(env, operator, metrics);
       return;
     }
     console.log(`the result of previous metrics is: ${JSON.stringify(prevMetrics)}`);
@@ -62,10 +63,8 @@ export async function runGuard(env, operator) {
       throw new Error("lighthouse audit gets failed");
     }
     console.log('lighthouse audit gets passed');
+    await storeMetrics(env, operator, metrics);
   } finally {
-    if (metrics) {
-      await storeMetrics(env, operator, metrics);
-    }
     await browser.close();
   }
 }
